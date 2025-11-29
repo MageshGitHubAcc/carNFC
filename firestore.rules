@@ -1,0 +1,121 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==================== HELPER FUNCTIONS ====================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // ==================== USERS COLLECTION ====================
+    
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+      
+      // User's parking history sub-collection
+      match /parkingHistory/{bookingId} {
+        allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+        allow write: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      }
+    }
+    
+    // ==================== MALLS COLLECTION ====================
+    
+    match /malls/{mallId} {
+      // Anyone authenticated can read mall data
+      allow read: if isAuthenticated();
+      
+      // Admins can do anything
+      allow write: if isAdmin();
+      
+      // Regular users can update ONLY availableSlots and occupiedSlots during booking
+      // This allows FieldValue.increment() to work
+      allow update: if isAuthenticated() && 
+                       (
+                         // Allow increment/decrement operations on slot counters
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['availableSlots', 'occupiedSlots'])
+                       );
+      
+      // ==================== SLOTS SUB-COLLECTION ====================
+      
+      match /slots/{slotId} {
+        allow read: if isAuthenticated();
+        
+        // Admins can do anything with slots
+        allow create, delete: if isAdmin();
+        
+        // Admins can update any field
+        allow update: if isAdmin();
+        
+        // Regular users can update ONLY these fields during booking/checkout
+        allow update: if isAuthenticated() && 
+                         request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['status', 'currentBookingId', 'currentUserId', 'lastUpdated']) &&
+                         request.resource.data.status in ['available', 'occupied', 'reserved', 'maintenance'];
+      }
+      
+      // ==================== ACTIVE BOOKINGS SUB-COLLECTION ====================
+      
+      match /activeBookings/{bookingId} {
+        allow read: if isAuthenticated();
+        
+        // Any authenticated user can create a booking
+        allow create: if isAuthenticated();
+        
+        // Only the owner or admin can update/delete
+        allow update, delete: if isAuthenticated() && 
+                                 (resource.data.userId == request.auth.uid || isAdmin());
+      }
+      
+      // ==================== BOOKING HISTORY SUB-COLLECTION ====================
+      
+      match /bookingHistory/{bookingId} {
+        allow read: if isAuthenticated();
+        
+        // Any authenticated user can create history entry
+        allow create: if isAuthenticated();
+        
+        // Only admins can update/delete history
+        allow update, delete: if isAdmin();
+      }
+    }
+    
+    // ==================== GLOBAL BOOKINGS COLLECTION ====================
+    
+    match /bookings/{bookingId} {
+      // Users can read their own bookings, admins can read all
+      allow read: if isAuthenticated() && 
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Any authenticated user can create a booking
+      allow create: if isAuthenticated();
+      
+      // Users can update their own bookings, admins can update all
+      allow update: if isAuthenticated() && 
+                       (resource.data.userId == request.auth.uid || isAdmin());
+      
+      // Only admins can delete bookings
+      allow delete: if isAdmin();
+    }
+    
+    // ==================== METADATA COLLECTION ====================
+    
+    match /metadata/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+  }
+}

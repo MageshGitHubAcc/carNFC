@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "943129513200",
+    "project_id": "car-parking-nfc",
+    "storage_bucket": "car-parking-nfc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:943129513200:android:886174443bce0c70de0635",
+        "android_client_info": {
+          "package_name": "com.vit.nfc"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "943129513200-5ufqkn46cev6b9498g86o5pblsu5boo9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2iJWG87p8q03Rz4kqx2gKJP9wNq2PvvE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "943129513200-5ufqkn46cev6b9498g86o5pblsu5boo9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "943129513200-t4anmv42vl65eu347m7d2gcv5uvnr5c0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.vit.nfc"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

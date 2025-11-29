@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>943129513200-t4anmv42vl65eu347m7d2gcv5uvnr5c0.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.943129513200-t4anmv42vl65eu347m7d2gcv5uvnr5c0</string>
+	<key>API_KEY</key>
+	<string>AIzaSyD3HXWDdE_yIc8luVsxjLJL8aa2Tln5v1s</string>
+	<key>GCM_SENDER_ID</key>
+	<string>943129513200</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.vit.nfc</string>
+	<key>PROJECT_ID</key>
+	<string>car-parking-nfc</string>
+	<key>STORAGE_BUCKET</key>
+	<string>car-parking-nfc.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:943129513200:ios:81fc7a8bbd42bc02de0635</string>
+</dict>
+</plist>
