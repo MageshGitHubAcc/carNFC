@@ -69,6 +69,12 @@ class MallRepository {
         );
   }
 
+  //  without stream get mall data
+  Future<List<MallModel>> getAllMall() async {
+    final snapshot = await _firestore.collection('malls').get();
+    return snapshot.docs.map((doc) => MallModel.fromFirestore(doc)).toList();
+  }
+
   // Get specific mall
   Future<MallModel?> getMallById(String mallId) async {
     final doc = await _firestore.collection('malls').doc(mallId).get();
@@ -159,6 +165,7 @@ class MallRepository {
     batch.update(_firestore.collection('malls').doc(mallId), {
       'availableSlots': totalSlots,
       'occupiedSlots': 0,
+      'reservedSlots': 0,
     });
 
     await batch.commit();

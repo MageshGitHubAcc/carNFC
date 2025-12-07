@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:flutter_app/data/models/user_model.dart';
-import 'package:flutter_app/data/providers/provider.dart';
+import 'package:flutter_app/data/providers/auth_state_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -14,6 +16,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -24,14 +27,23 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeIn,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
 
     _animationController.forward();
-    _checkAuthState();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInitialized) {
+      _isInitialized = true;
+      _animationController.addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _checkAuthState();
+        }
+      });
+    }
   }
 
   @override
@@ -41,59 +53,75 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _checkAuthState() async {
-    // Wait for animation to complete
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    // Check authentication state
     final authState = ref.read(authStateProvider);
 
     authState.when(
       data: (user) async {
         if (user == null) {
-          // Not logged in - go to login
-          Navigator.pushReplacementNamed(context, '/login');
+          _navigateTo('/login');
         } else {
-          // Logged in - check user data and navigate accordingly
-          final userDataAsync = ref.read(currentUserDataProvider);
-
-          userDataAsync.when(
-            data: (userData) {
-              if (userData == null) {
-                Navigator.pushReplacementNamed(context, '/login');
-              } else if (userData.role == UserRole.admin) {
-                Navigator.pushReplacementNamed(context, '/admin/dashboard');
-              } else {
-                Navigator.pushReplacementNamed(context, '/home');
-              }
-            },
-            loading: () {
-              // Wait a bit more for user data
-              Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) {
-                  Navigator.pushReplacementNamed(context, '/home');
-                }
-              });
-            },
-            error: (_, __) {
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-          );
+          await _checkUserRole(user.uid);
         }
       },
       loading: () {
-        // Still loading, wait a bit
-        Future.delayed(const Duration(seconds: 1), () {
+        final subscription = ref.listenManual<AsyncValue<auth.User?>>(
+          authStateProvider,
+          (_, next) {
+            next.when(
+              data: (user) {
+                if (user == null) {
+                  _navigateTo('/login');
+                } else {
+                  _checkUserRole(user.uid);
+                }
+              },
+              loading: () {}, // Do nothing on loading
+              error: (error, _) {
+                _navigateTo('/login');
+              },
+            );
+          },
+        );
+
+        // Set a timeout to prevent getting stuck
+        Future.delayed(const Duration(seconds: 5), () {
           if (mounted) {
-            Navigator.pushReplacementNamed(context, '/login');
+            subscription.close();
+            _navigateTo('/login');
           }
         });
       },
-      error: (_, __) {
-        Navigator.pushReplacementNamed(context, '/login');
+      error: (error, _) {
+        _navigateTo('/login');
       },
     );
+  }
+
+  Future<void> _checkUserRole(String userId) async {
+    try {
+      final userData = await ref.read(currentUserDataProvider.future);
+      if (!mounted) return;
+
+      if (userData == null) {
+        _navigateTo('/login');
+      } else if (userData.role == UserRole.admin) {
+        _navigateTo('/admin/dashboard');
+      } else {
+        _navigateTo('/home');
+      }
+    } catch (e) {
+      _navigateTo('/login');
+    }
+  }
+
+  void _navigateTo(String route) {
+    if (!mounted) return;
+    // Add a small delay to ensure smooth transition
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, route);
+      }
+    });
   }
 
   @override
@@ -106,7 +134,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App Icon/Logo
               Container(
                 width: 120,
                 height: 120,
@@ -128,7 +155,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 ),
               ),
               const SizedBox(height: 32),
-              // App Name
               const Text(
                 'Smart Parking',
                 style: TextStyle(
@@ -148,7 +174,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 ),
               ),
               const SizedBox(height: 48),
-              // Loading indicator
               const SizedBox(
                 width: 40,
                 height: 40,

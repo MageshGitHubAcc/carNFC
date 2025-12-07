@@ -75,6 +75,10 @@ final adminMallsProvider = StreamProvider<List<MallModel>>((ref) {
   return ref.watch(mallRepositoryProvider).getMalls(includeInactive: true);
 });
 
+// get all mall
+final adminAllMallProvider = FutureProvider<List<MallModel>>((ref) async {
+  return await ref.watch(mallRepositoryProvider).getAllMall();
+});
 // Get specific mall by ID
 final mallByIdProvider = StreamProvider.family<MallModel?, String>((
   ref,
@@ -190,6 +194,20 @@ final activeBookingsProvider = StreamProvider<List<GlobalBookingModel>>((ref) {
       .getUserActiveBookings(user.uid)
       .handleError((error, stackTrace) {
         debugPrint('Error in activeBookingsProvider: $error');
+        debugPrint(stackTrace.toString());
+        return []; // Return empty list on error
+      });
+});
+
+// Provider for all active bookings (admin only)
+final adminActiveBookingsProvider = StreamProvider<List<GlobalBookingModel>>((
+  ref,
+) {
+  return ref
+      .watch(bookingRepositoryProvider)
+      .getAllActiveBookings()
+      .handleError((error, stackTrace) {
+        debugPrint('Error in adminActiveBookingsProvider: $error');
         debugPrint(stackTrace.toString());
         return []; // Return empty list on error
       });

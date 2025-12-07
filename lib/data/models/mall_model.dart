@@ -9,6 +9,7 @@ class MallModel {
   final int evSlots;
   final int availableSlots;
   final int occupiedSlots;
+  final int reservedSlots;
   final Map<String, int> categoryDistribution;
   final bool isActive;
   final double latitude;
@@ -25,6 +26,7 @@ class MallModel {
     required this.evSlots,
     required this.availableSlots,
     required this.occupiedSlots,
+    required this.reservedSlots,
     required this.categoryDistribution,
     required this.isActive,
     required this.latitude,
@@ -59,6 +61,7 @@ class MallModel {
         evSlots: (data['evSlots'] as num?)?.toInt() ?? 0,
         availableSlots: (data['availableSlots'] as num?)?.toInt() ?? 0,
         occupiedSlots: (data['occupiedSlots'] as num?)?.toInt() ?? 0,
+        reservedSlots: (data['reservedSlots'] as num?)?.toInt() ?? 0,
         categoryDistribution: Map<String, int>.from(
           data['categoryDistribution'] ?? {},
         ),
@@ -84,6 +87,7 @@ class MallModel {
         evSlots: 0,
         availableSlots: 0,
         occupiedSlots: 0,
+        reservedSlots: 0,
         categoryDistribution: {},
         isActive: false,
         latitude: 0,
@@ -102,6 +106,7 @@ class MallModel {
       'evSlots': evSlots,
       'availableSlots': availableSlots,
       'occupiedSlots': occupiedSlots,
+      'reservedSlots': reservedSlots,
       'categoryDistribution': categoryDistribution,
       'isActive': isActive,
       'location': {'latitude': latitude, 'longitude': longitude},

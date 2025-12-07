@@ -86,7 +86,7 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
         carType: _carModelController.text,
         vehicleCategory: '4 Wheeler',
         checkInDateTime: now,
-        status: BookingStatus.reserved,
+        status: BookingStatus.active, // Active status for manual occupancy
         encryptedData: '',
         createdAt: now,
         reservationStartTime: now,
@@ -160,7 +160,7 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
         carType: _carModelController.text,
         vehicleCategory: '4 Wheeler',
         checkInDateTime: now,
-        status: BookingStatus.reserved, // Initial status is reserved
+        status: BookingStatus.active, // Active status for manual occupancy
         encryptedData: '',
         createdAt: now,
         reservationStartTime: now,
@@ -187,6 +187,29 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
           'NFC is not available on this device. Booking created without NFC.',
         );
         if (mounted) Navigator.pop(context);
+        return;
+      }
+
+      // Check if there are any occupied slots before writing to NFC
+      final slotsAsync = ref.read(slotsForMallProvider(widget.mallId));
+      final slots = slotsAsync.value ?? [];
+      final occupiedSlots = slots
+          .where(
+            (slot) =>
+                slot.status.toLowerCase() == 'occupied' ||
+                slot.status.toLowerCase() == 'active',
+          )
+          .toList();
+
+      if (occupiedSlots.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No occupied slots found. NFC tag not written.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
         return;
       }
 

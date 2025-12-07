@@ -37,7 +37,7 @@ class _ActiveBookingsScreenState extends ConsumerState<ActiveBookingsScreen> {
           }
 
           // Get all active bookings
-          final bookingsAsync = ref.watch(activeBookingsProvider);
+          final bookingsAsync = ref.watch(adminActiveBookingsProvider);
 
           return Column(
             children: [
@@ -75,12 +75,22 @@ class _ActiveBookingsScreenState extends ConsumerState<ActiveBookingsScreen> {
               Expanded(
                 child: bookingsAsync.when(
                   data: (bookings) {
-                    // Filter bookings by selected mall
-                    final filteredBookings = _selectedMallId == null
-                        ? bookings
-                        : bookings
-                              .where((b) => b.mallId == _selectedMallId)
-                              .toList();
+                    // Filter bookings by selected mall and deduplicate
+                    final filteredBookings =
+                        (_selectedMallId == null
+                                ? bookings
+                                : bookings
+                                      .where((b) => b.mallId == _selectedMallId)
+                                      .toList())
+                            .fold<Map<String, GlobalBookingModel>>({}, (
+                              map,
+                              booking,
+                            ) {
+                              map[booking.bookingId] = booking;
+                              return map;
+                            })
+                            .values
+                            .toList();
 
                     if (filteredBookings.isEmpty) {
                       return Center(
@@ -115,7 +125,7 @@ class _ActiveBookingsScreenState extends ConsumerState<ActiveBookingsScreen> {
 
                     return RefreshIndicator(
                       onRefresh: () async {
-                        ref.invalidate(activeBookingsProvider);
+                        ref.invalidate(adminActiveBookingsProvider);
                         await Future.delayed(const Duration(milliseconds: 500));
                       },
                       child: ListView.builder(
@@ -148,7 +158,7 @@ class _ActiveBookingsScreenState extends ConsumerState<ActiveBookingsScreen> {
                         const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: () {
-                            ref.invalidate(activeBookingsProvider);
+                            ref.invalidate(adminActiveBookingsProvider);
                           },
                           child: const Text('Retry'),
                         ),

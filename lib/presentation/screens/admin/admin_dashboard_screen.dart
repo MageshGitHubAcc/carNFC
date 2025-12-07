@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_app/presentation/screens/admin/manual_booking_screen.dart';
+import 'package:flutter_app/core/services/nfc_service.dart';
 
 import 'package:flutter_app/routes.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,21 +25,77 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   String? _selectedMallId;
   String _selectedFloor = 'All';
+  final _nfcService = NFCService();
+  bool _isNfcCheckoutProcessing = false;
+
+  Future<void> _navigateToCreateMall() async {
+    if (!mounted) return;
+    await Navigator.pushNamed(context, '/admin/create-mall');
+    // Refresh the malls list after creating a new mall
+    if (mounted) {
+      ref.invalidate(adminMallsProvider);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Navigate to create mall screen when the screen first loads if no malls exist
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final mallsState = ref.read(adminMallsProvider);
+      if (mallsState.value?.isEmpty ?? true) {
+        _navigateToCreateMall();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final mallsAsync = ref.watch(adminMallsProvider);
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC), // Slate 50
+      backgroundColor: const Color(0xFFF8FAFC), // Slate 50,
       body: mallsAsync.when(
         data: (malls) {
           if (malls.isEmpty) {
-            return const Center(child: Text('No malls configured yet.'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.store_mall_directory_outlined,
+                    size: 64,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No malls configured yet',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Get started by adding your first mall',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () => _navigateToCreateMall(),
+                    icon: const Icon(Icons.add),
+                    label: const Text('CREATE MALL'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
           _ensureMallSelected(malls);
           final selectedMall = malls.firstWhere(
             (m) => m.mallId == _selectedMallId,
+            orElse: () => malls.first, // Fallback to first mall if not found
           );
 
           final statsAsync = ref.watch(
@@ -48,59 +105,87 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             slotsForMallProvider(selectedMall.mallId),
           );
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              // Refresh all providers for the selected mall
-              ref.invalidate(mallStatisticsProvider(selectedMall.mallId));
-              ref.invalidate(slotsForMallProvider(selectedMall.mallId));
-              ref.invalidate(
-                activeBookingsForMallProvider(selectedMall.mallId),
-              );
-              // Wait a bit to show the refresh indicator (providers refresh immediately but streams might take a moment)
-              await Future.delayed(const Duration(milliseconds: 500));
-            },
-            child: CustomScrollView(
-              slivers: [
-                _buildSliverAppBar(malls, selectedMall),
-                SliverPadding(
-                  padding: const EdgeInsets.all(24),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      // Stats Section
-                      statsAsync.when(
-                        data: (stats) => _StatisticsSection(
-                          stats: {...stats, 'mall': selectedMall},
+          // Check if there are any occupied slots
+          final slots = slotsAsync.value ?? [];
+          final hasOccupiedSlots = slots.any(
+            (slot) =>
+                slot.status.toLowerCase() == 'occupied' ||
+                slot.status.toLowerCase() == 'active',
+          );
+
+          return Scaffold(
+            backgroundColor: const Color(0xFFF8FAFC), // Slate 50
+            floatingActionButton: hasOccupiedSlots
+                ? FloatingActionButton.extended(
+                    onPressed: _scanNfcForCheckout,
+                    icon: const Icon(Icons.nfc),
+                    label: const Text('Scan NFC'),
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  )
+                : null,
+            body: RefreshIndicator(
+              onRefresh: () async {
+                // Refresh all providers for the selected mall
+                ref.invalidate(mallStatisticsProvider(selectedMall.mallId));
+                ref.invalidate(slotsForMallProvider(selectedMall.mallId));
+                ref.invalidate(
+                  activeBookingsForMallProvider(selectedMall.mallId),
+                );
+                // Wait a bit to show the refresh indicator (providers refresh immediately but streams might take a moment)
+                await Future.delayed(const Duration(milliseconds: 500));
+              },
+              child: CustomScrollView(
+                slivers: [
+                  _buildSliverAppBar(malls, selectedMall),
+                  SliverPadding(
+                    padding: const EdgeInsets.all(24),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        // Stats Section
+                        statsAsync.when(
+                          data: (stats) => _StatisticsSection(
+                            stats: {...stats, 'mall': selectedMall},
+                          ),
+                          loading: () =>
+                              const Center(child: CircularProgressIndicator()),
+                          error: (error, _) =>
+                              Text('Error loading stats: $error'),
                         ),
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (error, _) =>
-                            Text('Error loading stats: $error'),
-                      ),
-                      const SizedBox(height: 32),
+                        const SizedBox(height: 32),
 
-                      // Live Slot Visualization
-                      _buildSectionHeader(
-                        'Live Slot Visualization',
-                        action: _buildFloorFilter(slotsAsync),
-                      ),
-                      const SizedBox(height: 16),
-                      _SlotLegend(),
-                      const SizedBox(height: 16),
-                      LayoutBuilder(
-                        builder: (context, constraints) =>
-                            _buildSlotGrid(constraints, slotsAsync),
-                      ),
-                      const SizedBox(height: 32),
+                        // Live Slot Visualization
+                        _buildSectionHeader(
+                          'Live Slot Visualization',
+                          action: _buildFloorFilter(slotsAsync),
+                        ),
+                        const SizedBox(height: 16),
+                        _SlotLegend(),
+                        const SizedBox(height: 16),
+                        LayoutBuilder(
+                          builder: (context, constraints) =>
+                              _buildSlotGrid(constraints, slotsAsync),
+                        ),
+                        const SizedBox(height: 32),
 
-                      // Quick Actions
-                      _buildSectionHeader('Quick Actions'),
-                      const SizedBox(height: 16),
-                      const _QuickActionsSection(),
-                      const SizedBox(height: 40),
-                    ]),
+                        // Quick Actions
+                        _buildSectionHeader('Quick Actions'),
+                        const SizedBox(height: 16),
+                        _QuickActionsSection(
+                          onNfcCheckout: _scanNfcForCheckout,
+                        ),
+                        const SizedBox(height: 40),
+
+                        // Active Bookings Section
+                        // _buildSectionHeader('Active Bookings'),
+                        // const SizedBox(height: 16),
+                        // _buildActiveBookingsSection(),
+                        // const SizedBox(height: 40),
+                      ]),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },
@@ -699,13 +784,392 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   void _ensureMallSelected(List<MallModel> malls) {
-    if (_selectedMallId == null && malls.isNotEmpty) {
+    if (malls.isEmpty) return;
+
+    // If no mall is selected or selected mall is not in the list, select the first one
+    if (_selectedMallId == null ||
+        !malls.any((m) => m.mallId == _selectedMallId)) {
       _selectedMallId = malls.first.mallId;
     }
   }
 
   void openUserScreen() {
     Navigator.pushNamed(context, 'profile_screen');
+  }
+
+  Widget _buildActiveBookingsSection() {
+    final activeBookingsAsync = ref.watch(
+      activeBookingsForMallProvider(_selectedMallId!),
+    );
+
+    return activeBookingsAsync.when(
+      data: (bookings) {
+        if (bookings.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.car_rental_outlined,
+                  size: 48,
+                  color: Colors.grey[300],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'No active bookings',
+                  style: TextStyle(color: Colors.grey[400]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+          ),
+          child: Column(
+            children: [
+              // Header with count
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.car_rental, color: Color(0xFF0F172A)),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${bookings.length} Active Booking${bookings.length == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () => Navigator.pushNamed(
+                        context,
+                        '/admin/active-bookings',
+                      ),
+                      icon: const Icon(Icons.list_alt, size: 18),
+                      label: const Text('View All'),
+                    ),
+                  ],
+                ),
+              ),
+              // Bookings list (show max 3)
+              ...bookings
+                  .take(3)
+                  .map((booking) => _buildBookingCard(booking))
+                  .toList(),
+              if (bookings.length > 3)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  child: TextButton(
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/admin/active-bookings'),
+                    child: Text('View ${bookings.length - 3} more bookings'),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            const SizedBox(height: 12),
+            Text(
+              'Error loading bookings',
+              style: TextStyle(color: Colors.red[400]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBookingCard(GlobalBookingModel booking) {
+    final duration = _calculateDuration(booking.checkInDateTime);
+    final amount = _calculateAmount(booking.checkInDateTime);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: booking.status == 'active'
+                      ? Colors.green
+                      : Colors.orange,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  booking.status.name.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Slot ${booking.slotNumber}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            booking.carNumber,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 4),
+              Text(
+                'Check-in: ${DateFormat('hh:mm a').format(booking.checkInDateTime)}',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+              const Spacer(),
+              Text(
+                duration,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.attach_money, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 4),
+              Text(amount, style: TextStyle(color: Colors.grey[600])),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: () => _openCheckoutScreen(booking),
+                icon: const Icon(Icons.logout, size: 16),
+                label: const Text('Checkout'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _scanNfcForCheckout() async {
+    if (_isNfcCheckoutProcessing) return;
+
+    setState(() {
+      _isNfcCheckoutProcessing = true;
+    });
+
+    try {
+      // Check NFC availability
+      final isNfcAvailable = await _nfcService.isNFCAvailable();
+      if (!isNfcAvailable) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('NFC is not available on this device'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Show scanning dialog
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Scanning NFC Tag'),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Hold NFC tag near device to scan...'),
+            ],
+          ),
+        ),
+      );
+
+      // Read NFC tag
+      final nfcData = await _nfcService.readNFCTag();
+
+      // Close the scanning dialog
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      if (nfcData == null || nfcData['bookingId'] == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No valid booking found on NFC tag'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final bookingId = nfcData['bookingId'] as String;
+
+      // Get booking details
+      final bookingRepo = ref.read(bookingRepositoryProvider);
+      final booking = await bookingRepo.getBookingById(bookingId);
+
+      if (booking == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Booking not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Check if booking is already completed
+      if (booking.status == BookingStatus.completed) {
+        // Clear NFC tag since booking is already completed
+        await _nfcService.clearNFCTag();
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'This booking is already completed. NFC tag cleared.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Check if booking is cancelled
+      if (booking.status == BookingStatus.cancelled) {
+        // Clear NFC tag since booking is cancelled
+        await _nfcService.clearNFCTag();
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This booking is cancelled. NFC tag cleared.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Check if booking is occupied (active or reserved)
+      if (booking.status == BookingStatus.active ||
+          booking.status == BookingStatus.reserved) {
+        // Navigate to checkout screen
+        if (!mounted) return;
+        await Navigator.pushNamed(
+          context,
+          CreateCheckOutScreen.routeName,
+          arguments: CreateCheckOutArgs(booking: booking),
+        );
+
+        // After checkout, clear the NFC tag
+        await _nfcService.clearNFCTag();
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Checkout completed successfully! NFC tag cleared.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Refresh providers
+        ref.invalidate(activeBookingsForMallProvider(_selectedMallId!));
+        ref.invalidate(mallStatisticsProvider(_selectedMallId!));
+        ref.invalidate(slotsForMallProvider(_selectedMallId!));
+      } else {
+        // For any other status, clear the NFC tag and show message
+        await _nfcService.clearNFCTag();
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Booking status: ${booking.status.name}. NFC tag cleared.',
+            ),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('NFC scan failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isNfcCheckoutProcessing = false;
+        });
+      }
+    }
   }
 }
 
@@ -722,9 +1186,9 @@ class _StatisticsSection extends StatelessWidget {
     final total = mall.totalSlots > 0 ? mall.totalSlots : 1;
     final availablePercent = (mall.availableSlots / total * 100)
         .toStringAsFixed(1);
-    final occupiedPercent = (mall.occupiedSlots / total * 100).toStringAsFixed(
-      1,
-    );
+    // final occupiedPercent =
+    //     ((mall.occupiedSlots + mall.reservedSlots) / total * 100)
+    //         .toStringAsFixed(1);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -764,20 +1228,21 @@ class _StatisticsSection extends StatelessWidget {
             DashboardStatCard(
               data: StatCardData(
                 title: 'Occupied',
-                value: '${mall.occupiedSlots}',
-                subtitle: '$occupiedPercent% of total',
+                value: '${mall.occupiedSlots + mall.reservedSlots}',
+                subtitle:
+                    '${mall.occupiedSlots} active, ${mall.reservedSlots} reserved',
                 icon: Icons.directions_car,
                 color: const Color(0xFFF97316),
               ),
             ),
-            DashboardStatCard(
-              data: StatCardData(
-                title: 'Active Bookings',
-                value: '${stats['activeBookings'] ?? 0}',
-                icon: Icons.confirmation_number,
-                color: const Color(0xFF8B5CF6),
-              ),
-            ),
+            // DashboardStatCard(
+            //   data: StatCardData(
+            //     title: 'Total Bookings',
+            //     value: '${stats['totalCompletedBookings'] ?? 0}',
+            //     icon: Icons.confirmation_number,
+            //     color: const Color(0xFF8B5CF6),
+            //   ),
+            // ),
           ],
         );
       },
@@ -802,17 +1267,26 @@ class _SlotLegend extends StatelessWidget {
 }
 
 class _QuickActionsSection extends StatelessWidget {
-  const _QuickActionsSection();
+  const _QuickActionsSection({required this.onNfcCheckout});
+
+  final VoidCallback onNfcCheckout;
 
   @override
   Widget build(BuildContext context) {
     final actions = [
-      _QuickAction(
-        label: 'Active Bookings',
-        icon: Icons.list_alt_rounded,
-        color: Colors.green,
-        route: '/admin/active-bookings',
-      ),
+      // _QuickAction(
+      //   label: 'Active Bookings',
+      //   icon: Icons.list_alt_rounded,
+      //   color: Colors.green,
+      //   route: '/admin/active-bookings',
+      // ),
+
+      // _QuickAction(
+      //   label: 'NFC Checkout',
+      //   icon: Icons.nfc,
+      //   color: Colors.red,
+      //   onTap: (context) => onNfcCheckout(),
+      // ),
       _QuickAction(
         label: 'Create Mall',
         icon: Icons.add_business_rounded,

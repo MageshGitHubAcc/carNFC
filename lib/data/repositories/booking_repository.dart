@@ -63,7 +63,6 @@ class BookingRepository {
           .doc(booking.bookingId);
       batch.set(mallBookingRef, {
         ...bookingWithEncryption.toFirestore(),
-        'status': 'reserved',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -76,23 +75,39 @@ class BookingRepository {
           .doc(booking.mallId)
           .collection('slots')
           .doc(booking.slotId);
+
+      // Set slot status based on booking status
+      final slotStatus = booking.status == BookingStatus.active
+          ? 'occupied'
+          : 'reserved';
+
       batch.update(slotRef, {
-        'status': 'reserved',
+        'status': slotStatus,
         'currentBookingId': booking.bookingId,
         'currentUserId': userId,
         'reservationEndTime': booking.reservationEndTime,
         'lastUpdated': FieldValue.serverTimestamp(),
       });
-      debugPrint('✅ Step 3 prepared');
+      debugPrint('✅ Step 3 prepared: Slot status set to $slotStatus');
 
       // 4. Update mall counters
       debugPrint('🔵 Step 4: Updating mall counters...');
       final mallRef = _firestore.collection('malls').doc(booking.mallId);
-      batch.update(mallRef, {
-        'availableSlots': FieldValue.increment(-1),
-        'reservedSlots': FieldValue.increment(1),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+
+      // Update counters based on booking status
+      if (booking.status == BookingStatus.active) {
+        batch.update(mallRef, {
+          'availableSlots': FieldValue.increment(-1),
+          'occupiedSlots': FieldValue.increment(1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        batch.update(mallRef, {
+          'availableSlots': FieldValue.increment(-1),
+          'reservedSlots': FieldValue.increment(1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
       debugPrint('✅ Step 4 prepared');
 
       // 5. Add to user's parking history
@@ -104,7 +119,6 @@ class BookingRepository {
           .doc(booking.bookingId);
       batch.set(userHistoryRef, {
         ...bookingWithEncryption.toFirestore(),
-        'status': 'reserved',
         'mallName': mallName,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -138,6 +152,25 @@ class BookingRepository {
           );
     } catch (e, stackTrace) {
       debugPrint('❌ Error in getUserActiveBookings: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
+      return Stream.value([]);
+    }
+  }
+
+  // Get all active bookings (admin only)
+  Stream<List<GlobalBookingModel>> getAllActiveBookings() {
+    try {
+      return _bookingsCollection
+          .where('status', whereIn: ['reserved', 'active'])
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map(
+            (snapshot) => snapshot.docs
+                .map((doc) => GlobalBookingModel.fromFirestore(doc))
+                .toList(),
+          );
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error in getAllActiveBookings: $e');
       debugPrint('❌ Stack trace: $stackTrace');
       return Stream.value([]);
     }

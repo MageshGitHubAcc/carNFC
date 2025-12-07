@@ -51,6 +51,9 @@ Future<void> main() async {
         : iosOptions,
   );
 
+  // Firebase Auth on mobile platforms already has built-in persistence
+  // No need to set persistence manually - it's enabled by default
+
   runApp(const ProviderScope(child: MyApp()));
 }
 
