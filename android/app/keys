@@ -1,0 +1,21 @@
+admin@Admins-MacBook-Air android % keytool -list -v \
+-keystore ~/.android/debug.keystore \
+-alias androiddebugkey \
+-storepass android \
+-keypass android
+
+Alias name: androiddebugkey
+Creation date: 8 Dec 2025
+Entry type: PrivateKeyEntry
+Certificate chain length: 1
+Certificate[1]:
+Owner: C=US, O=Android, CN=Android Debug
+Issuer: C=US, O=Android, CN=Android Debug
+Serial number: 1
+Valid from: Mon Dec 08 23:13:20 IST 2025 until: Wed Dec 01 23:13:20 IST 2055
+Certificate fingerprints:
+         SHA1: FD:5F:E9:EF:FE:FF:18:68:D1:C6:F7:6B:B7:9D:E3:34:EA:6A:49:EF
+         SHA256: D8:07:06:D6:B3:32:C0:34:10:A8:C5:C8:30:71:B2:3E:1E:4A:8E:6A:A9:CA:30:93:56:F7:47:4A:84:55:C6:D5
+Signature algorithm name: SHA256withRSA
+Subject Public Key Algorithm: 2048-bit RSA key
+Version: 1

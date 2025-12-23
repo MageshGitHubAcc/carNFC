@@ -84,6 +84,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
+      print(e);
       _showSnackBar(
         'Google login failed: ${_getErrorMessage(e.toString())}',
         isError: true,

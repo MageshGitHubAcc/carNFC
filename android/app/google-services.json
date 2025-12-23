@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "943129513200-3n7cbmdgc63onigve9edjs9qi1seoehj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vit.nfc",
+            "certificate_hash": "fd5fe9effeff1868d1c6f76bb79de334ea6a49ef"
+          }
+        },
+        {
           "client_id": "943129513200-5ufqkn46cev6b9498g86o5pblsu5boo9.apps.googleusercontent.com",
           "client_type": 3
         }

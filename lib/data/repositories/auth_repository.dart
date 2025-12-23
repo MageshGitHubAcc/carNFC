@@ -7,7 +7,7 @@ class AuthRepository {
   final auth.FirebaseAuth _auth = auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-  bool _isGoogleSignInInitialized = false;
+  bool _isInitialized = false;
 
   // Get current user stream
   Stream<auth.User?> get authStateChanges => _auth.authStateChanges();
@@ -63,16 +63,23 @@ class AuthRepository {
     }
   }
 
-  Future<void> _ensureGoogleSignInInitialized() async {
-    if (_isGoogleSignInInitialized) return;
-    await _googleSignIn.initialize();
-    _isGoogleSignInInitialized = true;
+  // Initialize Google Sign-In
+  Future<void> _initializeGoogleSignIn() async {
+    if (_isInitialized) return;
+
+    await _googleSignIn.initialize(
+      serverClientId:
+          '943129513200-5ufqkn46cev6b9498g86o5pblsu5boo9.apps.googleusercontent.com',
+    );
+
+    _isInitialized = true;
   }
 
   // Sign in with Google
   Future<UserModel> signInWithGoogle() async {
     try {
-      await _ensureGoogleSignInInitialized();
+      // Initialize Google Sign-In first
+      await _initializeGoogleSignIn();
 
       // Trigger the authentication flow (v7 API)
       final GoogleSignInAccount googleUser = await _googleSignIn.authenticate();
@@ -80,7 +87,7 @@ class AuthRepository {
       // Obtain the auth details from the request
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
-      // Create a new credential (access tokens are no longer provided in v7+)
+      // Create a new credential using idToken only (v7+ doesn't provide accessToken)
       final credential = auth.GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
       );

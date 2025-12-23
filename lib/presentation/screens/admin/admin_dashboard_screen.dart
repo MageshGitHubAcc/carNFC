@@ -38,18 +38,6 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    // Navigate to create mall screen when the screen first loads if no malls exist
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final mallsState = ref.read(adminMallsProvider);
-      if (mallsState.value?.isEmpty ?? true) {
-        _navigateToCreateMall();
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final mallsAsync = ref.watch(adminMallsProvider);
     return Scaffold(
