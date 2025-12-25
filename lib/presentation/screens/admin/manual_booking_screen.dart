@@ -5,6 +5,8 @@ import 'package:flutter_app/data/models/global_booking_model.dart';
 import 'package:flutter_app/data/models/parking_slot_model.dart';
 import 'package:flutter_app/data/providers/provider.dart';
 import 'package:flutter_app/core/services/nfc_service.dart';
+import 'package:flutter_app/presentation/screens/admin/manual_booking_nfc_screen.dart';
+import 'package:flutter_app/routes.dart';
 
 class ManualBookingScreen extends ConsumerStatefulWidget {
   static const String routeName = 'manual_booking_screen';
@@ -33,6 +35,9 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
   final _phoneController = TextEditingController();
   final _nfcService = NFCService();
 
+  static final _carNumberRegExp = RegExp(r'^[A-Z]{2}\s\d{2}\s[A-Z]{2}\s\d{4}$');
+  static final _phoneRegExp = RegExp(r'^\d{10}$');
+
   bool _isLoading = false;
   String? _statusMessage;
 
@@ -46,6 +51,35 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
       _carModelController.text = widget.existingBooking!.carType;
       // Phone number might not be in the booking model, leave empty if not available
     }
+  }
+
+  String? _validateCarNumber(String? value) {
+    final sanitized = value?.trim().toUpperCase() ?? '';
+    if (sanitized.isEmpty) {
+      return 'Car number is required';
+    }
+    if (!_carNumberRegExp.hasMatch(sanitized)) {
+      return 'Format must be like TN 23 AB 5182';
+    }
+    return null;
+  }
+
+  String? _validateRequired(String? value, String label) {
+    if (value == null || value.trim().isEmpty) {
+      return '$label is required';
+    }
+    return null;
+  }
+
+  String? _validatePhone(String? value) {
+    final sanitized = value?.trim() ?? '';
+    if (sanitized.isEmpty) {
+      return 'Phone number is required';
+    }
+    if (!_phoneRegExp.hasMatch(sanitized)) {
+      return 'Enter a 10-digit phone number';
+    }
+    return null;
   }
 
   @override
@@ -175,11 +209,6 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
         mallName: 'Mall',
       );
 
-      // 2. Write to NFC
-      setState(() {
-        _statusMessage = 'Hold NFC tag near device to write...';
-      });
-
       // Check NFC availability
       final isNfcAvailable = await _nfcService.isNFCAvailable();
       if (!isNfcAvailable) {
@@ -190,29 +219,6 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
         return;
       }
 
-      // Check if there are any occupied slots before writing to NFC
-      final slotsAsync = ref.read(slotsForMallProvider(widget.mallId));
-      final slots = slotsAsync.value ?? [];
-      final occupiedSlots = slots
-          .where(
-            (slot) =>
-                slot.status.toLowerCase() == 'occupied' ||
-                slot.status.toLowerCase() == 'active',
-          )
-          .toList();
-
-      if (occupiedSlots.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No occupied slots found. NFC tag not written.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
       final nfcData = {
         'bookingId': bookingId,
         'carNumber': booking.carNumber,
@@ -220,13 +226,28 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
         'mallId': booking.mallId,
         'checkInTime': now.toIso8601String(),
       };
+      // how many bytes its take nfcData
+      // route to nfc page.
 
-      final success = await _nfcService.writeNFCTag(nfcData);
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = 'Opening NFC writer...';
+      });
+
+      final success =
+          (await Navigator.pushNamed(
+                context,
+                AdminRoutes.manualBookingNfc,
+                arguments: ManualBookingNfcArgs(nfcData: nfcData),
+              ))
+              as bool? ??
+          false;
+
+      if (!mounted) return;
+      // Wait a moment for Firebase to propagate changes
+      await Future.delayed(const Duration(milliseconds: 500));
 
       if (mounted) {
-        // Wait a moment for Firebase to propagate changes
-        await Future.delayed(const Duration(milliseconds: 500));
-
         // Invalidate providers to refresh dashboard
         ref.invalidate(slotsForMallProvider(widget.mallId));
         ref.invalidate(activeBookingsForMallProvider(widget.mallId));
@@ -244,10 +265,22 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
           Navigator.pop(context);
         }
       } else {
-        _showError('Failed to write NFC tag. Booking created.');
-        if (mounted) Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Manual check-in created. NFC tag not written. You can retry writing from this screen.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+
+          // route to dashboard
+          Navigator.pushNamed(context, AdminRoutes.adminDashboard);
+        }
       }
     } catch (e) {
+      print(e);
       _showError('Error: $e');
     } finally {
       if (mounted) {
@@ -300,7 +333,7 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
                 icon: Icons.directions_car,
                 isCapitalized: true,
                 enabled: widget.existingBooking == null,
-                validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                validator: _validateCarNumber,
               ),
               const SizedBox(height: 16),
               _buildTextField(
@@ -308,6 +341,7 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
                 label: 'Car Model',
                 icon: Icons.local_taxi,
                 enabled: widget.existingBooking == null,
+                validator: (v) => _validateRequired(v, 'Car model'),
               ),
               const SizedBox(height: 16),
               _buildTextField(
@@ -315,7 +349,7 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
                 label: 'Driver Name',
                 icon: Icons.person,
                 enabled: widget.existingBooking == null,
-                validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                validator: (v) => _validateRequired(v, 'Driver name'),
               ),
               const SizedBox(height: 16),
               _buildTextField(
@@ -323,6 +357,7 @@ class _ManualBookingScreenState extends ConsumerState<ManualBookingScreen> {
                 label: 'Phone Number',
                 icon: Icons.phone,
                 keyboardType: TextInputType.phone,
+                validator: _validatePhone,
               ),
               if (widget.existingBooking != null)
                 Padding(

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>NFC Flow Documentation</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 40px; line-height: 1.6; color: #0f172a; }
+    h1 { color: #0b5ed7; }
+    h2 { color: #0d9488; margin-top: 32px; }
+    section { margin-bottom: 32px; }
+    ul { margin-top: 8px; }
+    .meta { font-style: italic; color: #475569; margin-bottom: 24px; }
+    .code { font-family: 'SF Mono', 'Roboto Mono', monospace; background: #f1f5f9; padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Car Parking NFC System – Project Documentation</h1>
+  <p class="meta">Generated on 25 Dec 2025 · Covers architecture, modules, flows, platform configuration, and NFC implementation.</p>
+
+  <section>
+    <h2>Table of Contents</h2>
+    <ol>
+      <li>Executive Summary</li>
+      <li>Technology Stack & Dependencies</li>
+      <li>High-Level Architecture</li>
+      <li>Data Layer & Firestore Collections</li>
+      <li>Core Modules & Key Files</li>
+      <li>Primary User Flows</li>
+      <li>NFC Implementation Details</li>
+      <li>Android Platform Configuration</li>
+      <li>Build, Deployment & Environment Setup</li>
+      <li>Advantages & Future Enhancements</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>1. Executive Summary</h2>
+    <p>
+      The “Car Parking NFC System” digitizes mall parking operations by combining Flutter clients, Firebase services, and NFC-enabled workflows.
+      Customers self-book slots while admins can create manual check-ins and issue NFC cards that act as portable booking tokens.
+      NFC tags store JSON payloads with booking identifiers, enabling rapid check-in/out and tamper-resistant auditing.
+    </p>
+  </section>
+
+  <section>
+    <h2>2. Technology Stack & Dependencies</h2>
+    <ul>
+      <li><strong>Framework:</strong> Flutter 3.9.2 with Material 3 UI.</li>
+      <li><strong>State Management:</strong> Riverpod 3 (providers for repositories, stats, booking data).</li>
+      <li><strong>Backend:</strong> Firebase (Firestore, Auth, Storage).</li>
+      <li><strong>NFC Plugin:</strong> <code>nfc_manager</code> 3.5.0 for Android/iOS tag access.</li>
+      <li><strong>Build Targets:</strong> Android (minSdk per <code>build.gradle.kts</code>), iOS (requires iOS 13+ for NFCTagReaderSession).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. High-Level Architecture</h2>
+    <p>The app follows a layered approach:</p>
+    <ul>
+      <li><strong>Presentation Layer:</strong> Flutter screens split into customer and admin packages. Example: ManualBookingScreen, AdminDashboardScreen, BookingConfirmationScreen.</li>
+      <li><strong>State Layer:</strong> Riverpod providers live under <span class="code">lib/data/providers</span>, exposing booking lists, statistics, and slot info.</li>
+      <li><strong>Domain/Data Layer:</strong> Firestore-backed repositories (<span class="code">lib/data/repositories</span>) manage models such as <span class="code">GlobalBookingModel</span>.</li>
+      <li><strong>Core Services:</strong> Shared utilities under <span class="code">lib/core</span>, notably <span class="code">nfc_service.dart</span> for tag IO.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. Data Layer & Firestore Collections</h2>
+    <p><strong>Main collections:</strong></p>
+    <ul>
+      <li><span class="code">bookings</span>: Documents shaped by <span class="code">GlobalBookingModel</span> containing status, slot, user, timestamps, encrypted payload, etc.</li>
+      <li><span class="code">malls</span>: Mall metadata (total slots, available slots, zones) that powers dashboards and slot selection.</li>
+      <li><span class="code">parkingSlots</span>: Individual slot state (occupied/reserved/available) used by manual booking and dashboards.</li>
+      <li><span class="code">users</span>: Authentication and profile data when tied into Firebase Auth.</li>
+    </ul>
+    <p>Repositories interact with Firestore, transforming snapshots into models and vice versa. Example: <span class="code">bookingRepositoryProvider</span> handles creation, lookups, and status updates.</p>
+  </section>
+
+  <section>
+    <h2>5. Core Modules & Key Files</h2>
+    <h3>5.1 Presentation Screens</h3>
+    <ul>
+      <li><strong>ManualBookingScreen</strong> (<span class="code">lib/presentation/screens/admin/manual_booking_screen.dart</span>): Admin UI for manual entries, now delegating NFC writing to a separate screen.</li>
+      <li><strong>ManualBookingNfcScreen</strong> (<span class="code">.../manual_booking_nfc_screen.dart</span>): Dedicated NFC writer with progress, retry, and result propagation.</li>
+      <li><strong>AdminDashboardScreen</strong>: Central hub for statistics, slot overview, NFC-based checkout scanning, and quick actions.</li>
+      <li><strong>User-facing screens</strong>: SlotSelectionScreen, VehicleDetailsScreen, BookingConfirmationScreen deliver the customer journey.</li>
+      <li><strong>WriteNfcScreen</strong>: Developer/QA sandbox for raw tag operations.</li>
+    </ul>
+    <h3>5.2 Services & Utilities</h3>
+    <ul>
+      <li><strong>NFCService</strong> (<span class="code">lib/core/services/nfc_service.dart</span>): Thread-safe wrapper over <code>NfcManager</code> for read/write/clear operations with JSON payloads.</li>
+      <li><strong>Providers</strong>: Riverpod definitions (e.g., <span class="code">activeBookingsForMallProvider</span>) delivering reactive data to widgets.</li>
+    </ul>
+    <h3>5.3 Routing</h3>
+    <p><span class="code">lib/routes.dart</span> centralizes admin route constants. <span class="code">lib/main.dart</span> registers MaterialApp routes, validating arguments and providing fallback UI when arguments are missing.</p>
+  </section>
+
+  <section>
+    <h2>6. Primary User Flows</h2>
+    <h3>6.1 Customer Web/App Booking</h3>
+    <ol>
+      <li>Select mall/slot via SlotSelectionScreen.</li>
+      <li>Enter vehicle + driver details.</li>
+      <li>Confirm booking → Firestore booking created → BookingConfirmationScreen shows QR/NFC instructions.</li>
+    </ol>
+    <h3>6.2 Admin Manual Booking & NFC Issuance</h3>
+    <ol>
+      <li>Open ManualBookingScreen, fill vehicle + driver info, pick slot.</li>
+      <li>App creates <span class="code">GlobalBookingModel</span> entry.</li>
+      <li>Navigates to ManualBookingNfcScreen with booking payload.</li>
+      <li>Admin taps “Write to Tag,” holds NFC card, sees success/failure, and returns.</li>
+      <li>Dashboard stats/providers invalidated to reflect occupancy change.</li>
+    </ol>
+    <h3>6.3 NFC Checkout on Dashboard</h3>
+    <ol>
+      <li>Admin taps “Scan NFC for Checkout.”</li>
+      <li>NFCService reads tag → bookingId retrieved.</li>
+      <li>App fetches booking, launches checkout screen, and after completion clears NFC tag.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>7. NFC Implementation Details</h2>
+    <ul>
+      <li><strong>Payload:</strong> JSON encoded booking data, stored as MIME <code>application/json</code> NDEF records.</li>
+      <li><strong>Session gating:</strong> <span class="code">_sessionActive</span> in NFCService prevents concurrent sessions and ensures <code>stopSession()</code> resets state.</li>
+      <li><strong>Error handling:</strong> Failures propagate via exceptions and UI snack bars. ManualBookingNfcScreen offers retry/cancel UI.</li>
+      <li><strong>Sandbox:</strong> WriteNfcScreen demonstrates minimal usage for troubleshooting hardware.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. Android Platform Configuration</h2>
+    <ul>
+      <li><strong>Manifest:</strong> Declares <code>&lt;uses-permission android:name="android.permission.NFC"/&gt;</code> and marks <code>android.hardware.nfc</code> as required.</li>
+      <li><strong>Intent Filters:</strong> TAG_DISCOVERED, NDEF_DISCOVERED, TECH_DISCOVERED (priority 999) route scanned tags to the Flutter activity when needed.</li>
+      <li><strong>Tech list:</strong> <span class="code">android/app/src/main/res/xml/nfc_tech_filter.xml</span> enumerates supported tag technologies.</li>
+      <li><strong>Activity lifecycle:</strong> Launch mode is <code>singleTask</code> to avoid duplicate Flutter activity instances.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>9. Build, Deployment & Environment Setup</h2>
+    <ul>
+      <li><strong>Flutter Commands:</strong> <span class="code">flutter clean && flutter pub get</span>, <span class="code">flutter run --release</span>.</li>
+      <li><strong>Firebase:</strong> Initialize with platform-specific <span class="code">FirebaseOptions</span> in <span class="code">main.dart</span>. Ensure Google Services JSON/Plist are configured.</li>
+      <li><strong>Testing NFC:</strong> Requires physical Android device or iOS hardware with NFC. Emulators without NFC will skip writing but still create bookings.</li>
+      <li><strong>PDF Documentation:</strong> Convert this HTML via <span class="code">pandoc docs/manual_nfc_documentation.html -o project_documentation.pdf</span> or browser “Print to PDF.”</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>10. Advantages & Future Enhancements</h2>
+    <h3>Advantages</h3>
+    <ul>
+      <li><strong>Operational Clarity:</strong> Separate admin/customer flows keep UX focused.</li>
+      <li><strong>Reliability:</strong> Shared NFCService + Riverpod providers reduce duplicated logic.</li>
+      <li><strong>Extensibility:</strong> New NFC scenarios (season passes, loyalty) can reuse ManualBookingNfcScreen.</li>
+      <li><strong>Observability:</strong> Firestore data + dashboards provide real-time slot visibility.</li>
+    </ul>
+    <h3>Future Enhancements</h3>
+    <ul>
+      <li>Automated PDF receipts after NFC checkout.</li>
+      <li>Offline caching for manual bookings when network is unstable.</li>
+      <li>Role-based access control to limit who can issue tags.</li>
+      <li>Telemetry on NFC failures to monitor hardware issues.</li>
+    </ul>
+  </section>
+</body>
+</html>

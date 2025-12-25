@@ -228,6 +228,28 @@ class _BookingConfirmationScreenState
 
     try {
       final bookingRepo = ref.read(bookingRepositoryProvider);
+
+      final slotStillAvailable = await bookingRepo.isSlotAvailable(
+        mallId: widget.args.mall.mallId,
+        slotId: widget.args.slot.slotId,
+        startTime: _reservationStartTime,
+        endTime: _reservationEndTime,
+      );
+
+      if (!slotStillAvailable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This slot was just taken. Please pick another slot.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
       final uniqueId = 'BK-${DateTime.now().millisecondsSinceEpoch}';
       final bookingId = await _generateSerialBookingId();
 

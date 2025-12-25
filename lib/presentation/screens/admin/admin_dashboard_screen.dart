@@ -1223,6 +1223,10 @@ class _StatisticsSection extends StatelessWidget {
                 color: const Color(0xFFF97316),
               ),
             ),
+            // InkWell(
+            //   onTap: () => Navigator.pushNamed(context, AdminRoutes.nfcWrite),
+            //   child: Text('write nfc'),
+            // ),
             // DashboardStatCard(
             //   data: StatCardData(
             //     title: 'Total Bookings',

@@ -310,26 +310,81 @@ class MallRepository {
     });
   }
 
-  // Clear all active bookings for a mall
   Future<void> clearActiveBookings(String mallId) async {
-    final batch = _firestore.batch();
-
-    // Get active bookings from subcollection
     final activeBookingsSnapshot = await _firestore
         .collection('malls')
         .doc(mallId)
         .collection('activeBookings')
         .get();
 
-    // Delete from subcollection and global collection
-    for (var doc in activeBookingsSnapshot.docs) {
-      batch.delete(doc.reference);
+    if (activeBookingsSnapshot.docs.isEmpty) return;
 
-      // Also delete from global bookings collection
+    final batch = _firestore.batch();
+    final slotsToReset = <String>[];
+
+    for (final doc in activeBookingsSnapshot.docs) {
+      final data = doc.data();
+
+      final slotId = data['slotId'] as String?;
+      if (slotId != null && slotId.isNotEmpty) {
+        slotsToReset.add(slotId);
+      }
+
+      batch.delete(doc.reference);
       batch.delete(_firestore.collection('bookings').doc(doc.id));
+
+      final userId = data['userId'] as String?;
+      if (userId != null && userId.isNotEmpty) {
+        final userHistoryRef = _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('parkingHistory')
+            .doc(doc.id);
+        batch.delete(userHistoryRef);
+      }
     }
 
     await batch.commit();
+
+    for (final slotId in slotsToReset) {
+      final nestedSlotRef = _firestore
+          .collection('malls')
+          .doc(mallId)
+          .collection('slots')
+          .doc(slotId);
+      final nestedDoc = await nestedSlotRef.get();
+
+      if (nestedDoc.exists) {
+        await nestedSlotRef.update({
+          'status': 'available',
+          'currentBookingId': null,
+          'currentUserId': null,
+          'reservationEndTime': null,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+        continue;
+      }
+
+      final globalSlotRef = _firestore.collection('slots').doc(slotId);
+      final globalDoc = await globalSlotRef.get();
+
+      if (globalDoc.exists) {
+        await globalSlotRef.update({
+          'status': 'available',
+          'currentBookingId': null,
+          'currentUserId': null,
+          'reservationEndTime': null,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    await _firestore.collection('malls').doc(mallId).update({
+      'occupiedSlots': 0,
+      'reservedSlots': 0,
+      'availableSlots': FieldValue.increment(slotsToReset.length),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   // Clear booking history for a mall
@@ -352,6 +407,98 @@ class MallRepository {
     }
 
     await batch.commit();
+  }
+
+  Future<void> resetMallData(String mallId) async {
+    final mallRef = _firestore.collection('malls').doc(mallId);
+
+    Future<void> _deleteSubcollection(
+      CollectionReference<Map<String, dynamic>> collection,
+    ) async {
+      final snapshot = await collection.get();
+      for (final doc in snapshot.docs) {
+        await doc.reference.delete();
+      }
+    }
+
+    // 1. Clear mall-scoped collections
+    await _deleteSubcollection(mallRef.collection('activeBookings'));
+    await _deleteSubcollection(mallRef.collection('bookingHistory'));
+
+    // 2. Remove global bookings + user parking history references
+    final bookingsSnapshot = await _firestore
+        .collection('bookings')
+        .where('mallId', isEqualTo: mallId)
+        .get();
+
+    for (final doc in bookingsSnapshot.docs) {
+      final data = doc.data();
+      final userId = data['userId'] as String?;
+
+      await doc.reference.delete();
+
+      if (userId != null && userId.isNotEmpty) {
+        final userHistoryRef = _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('parkingHistory')
+            .doc(doc.id);
+        final userHistoryDoc = await userHistoryRef.get();
+        if (userHistoryDoc.exists) {
+          await userHistoryRef.delete();
+        }
+      }
+    }
+
+    // 3. Reset slots to available state and recalculate counters
+    int totalSlots = 0;
+    int petrolSlots = 0;
+    int evSlots = 0;
+
+    Future<void> _resetSlots(
+      QuerySnapshot<Map<String, dynamic>> snapshot,
+    ) async {
+      for (final doc in snapshot.docs) {
+        totalSlots++;
+        final data = doc.data();
+        final fuelType = (data['fuelType'] as String?)?.toLowerCase();
+
+        if (fuelType == 'ev' || fuelType == 'electric') {
+          evSlots++;
+        } else {
+          petrolSlots++;
+        }
+
+        await doc.reference.update({
+          'status': 'available',
+          'currentBookingId': null,
+          'currentUserId': null,
+          'reservationEndTime': null,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    final nestedSlotsSnapshot = await mallRef.collection('slots').get();
+    if (nestedSlotsSnapshot.docs.isNotEmpty) {
+      await _resetSlots(nestedSlotsSnapshot);
+    } else {
+      final globalSlotsSnapshot = await _firestore
+          .collection('slots')
+          .where('mallId', isEqualTo: mallId)
+          .get();
+      await _resetSlots(globalSlotsSnapshot);
+    }
+
+    await mallRef.update({
+      'totalSlots': totalSlots,
+      'availableSlots': totalSlots,
+      'occupiedSlots': 0,
+      'reservedSlots': 0,
+      'petrolSlots': petrolSlots,
+      'evSlots': evSlots,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   // Get mall statistics

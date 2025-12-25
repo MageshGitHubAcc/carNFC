@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_app/presentation/screens/admin/write_nfc.dart';
 import 'package:flutter_app/presentation/screens/profile/profile_screen.dart';
 import 'package:flutter_app/presentation/screens/splash_screen.dart';
 import 'package:flutter_app/presentation/screens/user/home_screen.dart';
@@ -14,6 +15,7 @@ import 'package:flutter_app/presentation/screens/admin/data_management_screen.da
 import 'package:flutter_app/presentation/screens/admin/manage_slot_screen.dart';
 import 'package:flutter_app/presentation/screens/admin/report_screen.dart';
 import 'package:flutter_app/presentation/screens/admin/settings_screen.dart';
+import 'package:flutter_app/presentation/screens/admin/manual_booking_nfc_screen.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_app/presentation/screens/auth/login_screen.dart';
@@ -108,6 +110,7 @@ class MyApp extends StatelessWidget {
           return BookingConfirmationScreen(args: args);
         },
         '/home': (context) => const HomeScreen(),
+        'admin/nfc/write': (context) => const WriteNfcScreen(),
         '/admin/dashboard': (context) => const AdminDashboardScreen(),
         'profile_screen': (context) => const ProfileScreen(),
         ManageSlotsScreen.routeName: (context) {
@@ -135,6 +138,17 @@ class MyApp extends StatelessWidget {
             );
           }
           return CreateCheckOutScreen(booking: args.booking);
+        },
+        ManualBookingNfcScreen.routeName: (context) {
+          final args =
+              ModalRoute.of(context)?.settings.arguments
+                  as ManualBookingNfcArgs?;
+          if (args == null) {
+            return const Scaffold(
+              body: Center(child: Text('Missing NFC data')),
+            );
+          }
+          return ManualBookingNfcScreen(nfcData: args.nfcData);
         },
         '/admin/create-mall': (context) => const CreateMallScreen(),
         DataManagementScreen.routeName: (context) =>
